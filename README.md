@@ -6,10 +6,7 @@ An intelligent multi-agent system powered by CrewAI that automatically analyzes,
 ## Installation
 
 1. **Clone/Setup the project:**
-   ```bash
-   cd c:\Users\Youssef\Desktop\projects\codebase_agent
-   ```
-
+   
 2. **Create virtual environment:**
    ```bash
    python -m venv venv

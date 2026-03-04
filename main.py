@@ -4,6 +4,7 @@ import sys
 import argparse
 import logging
 import shutil
+from typing import Any, Optional
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
@@ -17,7 +18,7 @@ load_dotenv()
 
 def setup_logging(log_file: str = "logs/codebase_agent.log"):
     """Configure logging to both console and file."""
-    Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+    Path(log_file).parent.mkdir(parents=True, exist_ok=True) 
     
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
@@ -54,10 +55,8 @@ def load_config(config_file: str = "config.yaml") -> dict:
         config = yaml.safe_load(f)
     return config
 
-# ============================================================================
-# BACKUP UTILITIES
-# ============================================================================
-def backup_file(file_path: str) -> str:
+# Backup utilities
+def backup_file(file_path: str) -> Optional[str]:
     """Create a backup of the original file."""
     backup_dir = Path("backups") / datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_dir.mkdir(parents=True, exist_ok=True)
@@ -67,13 +66,12 @@ def backup_file(file_path: str) -> str:
     
     if original_file.exists():
         shutil.copy2(original_file, backup_file)
-        logger.info(f"✓ Backed up {file_path} to {backup_file}")
+        logger.info(f"Backed up {file_path} to {backup_file}")
         return str(backup_file)
     return None
 
-# ============================================================================
-# SETUP LLM
-# ============================================================================
+
+# LLM setup
 def setup_llm(config: dict) -> LLM:
     """Initialize LLM with config settings."""
     llm_config = config.get('llm', {})
@@ -84,9 +82,7 @@ def setup_llm(config: dict) -> LLM:
         max_tokens=llm_config.get('max_tokens', 1024)
     )
 
-# ============================================================================
-# SETUP AGENTS
-# ============================================================================
+# Agents setup
 def setup_agents(llm: LLM, config: dict, target_file: str) -> tuple:
     """Create agents with config settings."""
     agent_config = config.get('agents', {})
@@ -123,9 +119,7 @@ def setup_agents(llm: LLM, config: dict, target_file: str) -> tuple:
     
     return architect, developer, qa_engineer
 
-# ============================================================================
-# SETUP TASKS
-# ============================================================================
+# Tasks setup
 def setup_tasks(architect, developer, qa_engineer, target_file: str, config: dict) -> tuple:
     """Create tasks for the agents."""
     refactoring_level = config.get('processing', {}).get('refactoring_level', 'aggressive')
@@ -151,9 +145,7 @@ def setup_tasks(architect, developer, qa_engineer, target_file: str, config: dic
     
     return analysis_task, refactor_task, test_task
 
-# ============================================================================
-# SETUP CREW
-# ============================================================================
+# Crew setup
 def setup_crew(agents: tuple, tasks: tuple, config: dict) -> Crew:
     """Create the CrewAI crew."""
     crew_config = config.get('crew', {})
@@ -168,10 +160,8 @@ def setup_crew(agents: tuple, tasks: tuple, config: dict) -> Crew:
         max_rpm=crew_config.get('max_rpm', 1)
     )
 
-# ============================================================================
-# RETRY LOGIC
-# ============================================================================
-def run_with_retry(crew: Crew, config: dict, target_file: str) -> str:
+# Retry logic
+def run_with_retry(crew: Crew, config: dict, target_file: str) -> Any:
     """Run the crew with exponential backoff retry logic."""
     retry_config = config.get('retry', {})
     max_retries = retry_config.get('max_retries', 3)
@@ -180,12 +170,12 @@ def run_with_retry(crew: Crew, config: dict, target_file: str) -> str:
     for attempt in range(max_retries):
         try:
             logger.info(f"\n{'='*70}")
-            logger.info(f"🚀 Processing: {target_file} (Attempt {attempt + 1}/{max_retries})")
+            logger.info(f"Processing: {target_file} (Attempt {attempt + 1}/{max_retries})")
             logger.info(f"{'='*70}\n")
             
             result = crew.kickoff()
             
-            logger.info(f"\n✅ COMPLETED: {target_file}")
+            logger.info(f"\nCOMPLETED: {target_file}")
             logger.info(f"{'='*70}\n")
             
             return result
@@ -193,22 +183,34 @@ def run_with_retry(crew: Crew, config: dict, target_file: str) -> str:
             error_msg = str(e).lower()
             if "rate_limit" in error_msg or "tokens per minute" in error_msg:
                 wait_time = (2 ** attempt) * backoff_multiplier
-                logger.warning(f"⚠️  Rate limit hit. Waiting {wait_time}s before retry...\n")
+                logger.warning(f"Rate limit hit. Waiting {wait_time}s before retry...\n")
                 time.sleep(wait_time)
                 if attempt == max_retries - 1:
-                    logger.error(f"❌ Failed {target_file} after {max_retries} retries.")
+                    logger.error(f"Failed {target_file} after {max_retries} retries.")
                     raise
             else:
-                logger.error(f"❌ Error processing {target_file}: {str(e)}")
+                logger.error(f"Error processing {target_file}: {str(e)}")
                 raise
 
-# ============================================================================
-# GENERATE REPORT
-# ============================================================================
+    raise RuntimeError(f"Unable to process {target_file} after {max_retries} retries")
+
+# Report generation
 def generate_report(results: dict, config: dict):
     """Generate an HTML report of refactoring results."""
     report_file = config.get('output', {}).get('report_file', 'reports/refactoring_report.html')
     Path(report_file).parent.mkdir(parents=True, exist_ok=True)
+
+    total_inference_time = sum(
+        r.get('inference_time_seconds', 0.0)
+        for r in results.values()
+        if isinstance(r.get('inference_time_seconds', 0.0), (int, float))
+    )
+    successful_count = sum(1 for r in results.values() if r.get('status') == 'success')
+    failed_count = sum(1 for r in results.values() if r.get('status') == 'failed')
+    average_inference_time = (
+        total_inference_time / len(results)
+        if results else 0.0
+    )
     
     html_content = f"""
     <html>
@@ -229,8 +231,10 @@ def generate_report(results: dict, config: dict):
         <div class="summary">
             <h2>Summary</h2>
             <p>Total files processed: {len(results)}</p>
-            <p>Successful: {sum(1 for r in results.values() if r.get('status') == 'success')}</p>
-            <p>Failed: {sum(1 for r in results.values() if r.get('status') == 'failed')}</p>
+            <p>Successful: {successful_count}</p>
+            <p>Failed: {failed_count}</p>
+            <p>Total inference time: {total_inference_time:.2f}s</p>
+            <p>Average inference time per file: {average_inference_time:.2f}s</p>
         </div>
     """
     
@@ -241,6 +245,7 @@ def generate_report(results: dict, config: dict):
             <h3 class="{status_class}">{file_name}</h3>
             <p><strong>Status:</strong> {result.get('status', 'Unknown')}</p>
             <p><strong>Backup:</strong> {result.get('backup', 'N/A')}</p>
+            <p><strong>Inference time:</strong> {result.get('inference_time_seconds', 0.0):.2f}s</p>
         </div>
         """
     
@@ -252,24 +257,23 @@ def generate_report(results: dict, config: dict):
     with open(report_file, 'w') as f:
         f.write(html_content)
     
-    logger.info(f"📊 Report saved to {report_file}")
+    logger.info(f"Report saved to {report_file}")
 
-# ============================================================================
-# MAIN EXECUTION
-# ============================================================================
+
+
 def main():
     """Main entry point with CLI argument parsing."""
     parser = argparse.ArgumentParser(
         description='CodeBase Agent - Automated Code Refactoring',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  python main.py                              # Use config.yaml (default)
-  python main.py --file target_repo/bad_code.py
-  python main.py --config custom_config.yaml
-  python main.py --aggressive
-  python main.py --no-backup
-  python main.py --file file1.py --file file2.py
+            Examples:
+            python main.py                              # Use config.yaml (default)
+            python main.py --file target_repo/bad_code.py
+            python main.py --config custom_config.yaml
+            python main.py --aggressive
+            python main.py --no-backup
+            python main.py --file file1.py --file file2.py
         """
     )
     
@@ -311,7 +315,7 @@ Examples:
     # Setup logging
     global logger
     logger = setup_logging()
-    logger.info("CodeBase Agent Starting")
+    logger.info("CodeBase Agent starting")
     logger.info(f"Python {sys.version}")
     
     # Load configuration
@@ -363,15 +367,19 @@ Examples:
             
             # Setup agents and tasks
             agents = setup_agents(llm, config, target_file)
-            tasks = setup_tasks(*agents, target_file, config)
+            tasks = setup_tasks(agents[0], agents[1], agents[2], target_file, config)
             
             # Create and run crew
             crew = setup_crew(agents, tasks, config)
+            inference_start = time.perf_counter()
             result = run_with_retry(crew, config, target_file)
+            inference_time_seconds = time.perf_counter() - inference_start
+            logger.info(f"Inference time for {target_file}: {inference_time_seconds:.2f}s")
             
             results[target_file] = {
                 'status': 'success',
                 'backup': backup_path,
+                'inference_time_seconds': inference_time_seconds,
                 'result': str(result)[:200]  # Truncate for report
             }
             
@@ -379,12 +387,13 @@ Examples:
             logger.error(f"Failed to process {target_file}: {str(e)}")
             results[target_file] = {
                 'status': 'failed',
+                'inference_time_seconds': 0.0,
                 'error': str(e)
             }
     
     # Generate report
     logger.info(f"\n{'='*70}")
-    logger.info("PROCESSING COMPLETE")
+    logger.info("Processing complete")
     logger.info(f"{'='*70}")
     generate_report(results, config)
     

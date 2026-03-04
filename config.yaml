@@ -29,6 +29,7 @@ crew:
 processing:
   files:
     - "target_repo/bad_code.py"
+    - "target_repo/bad_code_2.py"
   # To process multiple files, add them here:
   # - "target_repo/another_file.py"
   # - "src/module.py"
