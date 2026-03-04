@@ -17,3 +17,7 @@ credentials.json
 Thumbs.db
 
 target_repo/test_*.py
+
+reports/
+logs/
+backups/

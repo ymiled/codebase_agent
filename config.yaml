@@ -1,0 +1,52 @@
+# CodeBase Agent Configuration
+
+# LLM Settings
+llm:
+  model: "groq/llama-3.3-70b-versatile"
+  temperature: 0.0
+  max_tokens: 1024
+
+# Agent Settings
+agents:
+  architect:
+    max_iter: 2
+    enable: true
+  developer:
+    max_iter: 2
+    enable: true
+  qa_engineer:
+    max_iter: 2
+    enable: true
+
+# Crew Settings
+crew:
+  process: "sequential"  # or "hierarchical"
+  memory: false
+  max_rpm: 1
+  verbose: true
+
+# Processing Settings
+processing:
+  files:
+    - "target_repo/bad_code.py"
+  # To process multiple files, add them here:
+  # - "target_repo/another_file.py"
+  # - "src/module.py"
+  
+  # Set to "aggressive" for more refactoring, "conservative" for minimal changes
+  refactoring_level: "aggressive"
+  
+  # Whether to backup original files before processing
+  backup_originals: true
+
+# Retry Settings
+retry:
+  max_retries: 3
+  backoff_multiplier: 15  # Base wait time in seconds (15, 30, 60...)
+
+# Output Settings
+output:
+  log_file: "logs/codebase_agent.log"
+  report_file: "reports/refactoring_report.html"
+  save_diffs: true
+  diffs_dir: "diffs"

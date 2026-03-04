@@ -1,0 +1,10 @@
+crewai==0.20.0
+crewai-tools==0.1.0
+langchain==0.3.5
+langchain-groq==0.1.3
+langchain-community==0.1.0
+pydantic==2.5.0
+python-dotenv==1.0.0
+pyyaml==6.0
+pytest==8.0.0
+flake8==7.0.0

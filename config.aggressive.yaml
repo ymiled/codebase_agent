@@ -1,0 +1,39 @@
+# Aggressive refactoring config - comprehensive changes
+
+llm:
+  model: "groq/llama-3.3-70b-versatile"
+  temperature: 0.0
+  max_tokens: 1024
+
+agents:
+  architect:
+    max_iter: 3  # More thorough analysis
+    enable: true
+  developer:
+    max_iter: 3  # Multiple refinement passes
+    enable: true
+  qa_engineer:
+    max_iter: 3
+    enable: true
+
+crew:
+  process: "hierarchical"  # Manager-based for complex decisions
+  memory: true  # Keep context for detailed work
+  max_rpm: 1
+  verbose: true  # Full output for monitoring
+
+processing:
+  files:
+    - "target_repo/bad_code.py"
+  refactoring_level: "aggressive"
+  backup_originals: true
+
+retry:
+  max_retries: 3
+  backoff_multiplier: 15
+
+output:
+  log_file: "logs/codebase_agent_aggressive.log"
+  report_file: "reports/refactoring_report_aggressive.html"
+  save_diffs: true
+  diffs_dir: "diffs"
