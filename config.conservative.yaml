@@ -24,7 +24,8 @@ crew:
 
 processing:
   files:
-    - "target_repo/bad_code.py"
+    - "target_repo/bad_code_1.py"
+    - "target_repo/bad_code_2.py"
   refactoring_level: "conservative"
   backup_originals: true
 

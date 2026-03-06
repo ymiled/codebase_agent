@@ -4,13 +4,12 @@ import sys
 import argparse
 import logging
 import shutil
-from typing import Any, Optional
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
 import yaml
 from crewai import Agent, Task, Crew, Process
-from tools import read_file_tool, write_file_tool, run_pytest_tool, run_linter_tool
+from tools import read_file_tool, write_to_file_tool, run_pytest_tool, run_linter_tool
 from crewai import LLM
 
 load_dotenv()
@@ -18,7 +17,7 @@ load_dotenv()
 
 def setup_logging(log_file: str = "logs/codebase_agent.log"):
     """Configure logging to both console and file."""
-    Path(log_file).parent.mkdir(parents=True, exist_ok=True) 
+    Path(log_file).parent.mkdir(parents=True, exist_ok=True)
     
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
@@ -55,8 +54,10 @@ def load_config(config_file: str = "config.yaml") -> dict:
         config = yaml.safe_load(f)
     return config
 
-# Backup utilities
-def backup_file(file_path: str) -> Optional[str]:
+# ============================================================================
+# BACKUP UTILITIES
+# ============================================================================
+def backup_file(file_path: str) -> str:
     """Create a backup of the original file."""
     backup_dir = Path("backups") / datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_dir.mkdir(parents=True, exist_ok=True)
@@ -70,8 +71,9 @@ def backup_file(file_path: str) -> Optional[str]:
         return str(backup_file)
     return None
 
-
-# LLM setup
+# ============================================================================
+# SETUP LLM
+# ============================================================================
 def setup_llm(config: dict) -> LLM:
     """Initialize LLM with config settings."""
     llm_config = config.get('llm', {})
@@ -82,7 +84,9 @@ def setup_llm(config: dict) -> LLM:
         max_tokens=llm_config.get('max_tokens', 1024)
     )
 
-# Agents setup
+# ============================================================================
+# SETUP AGENTS
+# ============================================================================
 def setup_agents(llm: LLM, config: dict, target_file: str) -> tuple:
     """Create agents with config settings."""
     agent_config = config.get('agents', {})
@@ -99,9 +103,9 @@ def setup_agents(llm: LLM, config: dict, target_file: str) -> tuple:
     
     developer = Agent(
         role='Python Developer',
-        goal=f'Rewrite {target_file} to be efficient (O(n)), PEP8 compliant, fully type-hinted. Save using write_file_tool.',
+        goal=f'Rewrite {target_file} to be efficient (O(n)), PEP8 compliant, fully type-hinted. Save using write_to_file_tool.',
         backstory='You execute perfectly. Be concise.',
-        tools=[read_file_tool, write_file_tool],
+        tools=[read_file_tool, write_to_file_tool],
         llm=llm,
         allow_delegation=False,
         max_iter=agent_config.get('developer', {}).get('max_iter', 2)
@@ -111,7 +115,7 @@ def setup_agents(llm: LLM, config: dict, target_file: str) -> tuple:
         role='QA Automation Engineer',
         goal=f'Write pytest unit tests for {target_file}, save to disk, and run them.',
         backstory='You write rigorous tests and execute them.',
-        tools=[read_file_tool, write_file_tool, run_pytest_tool],
+        tools=[read_file_tool, write_to_file_tool, run_pytest_tool],
         llm=llm,
         allow_delegation=False,
         max_iter=agent_config.get('qa_engineer', {}).get('max_iter', 2)
@@ -119,7 +123,9 @@ def setup_agents(llm: LLM, config: dict, target_file: str) -> tuple:
     
     return architect, developer, qa_engineer
 
-# Tasks setup
+# ============================================================================
+# SETUP TASKS
+# ============================================================================
 def setup_tasks(architect, developer, qa_engineer, target_file: str, config: dict) -> tuple:
     """Create tasks for the agents."""
     refactoring_level = config.get('processing', {}).get('refactoring_level', 'aggressive')
@@ -145,7 +151,9 @@ def setup_tasks(architect, developer, qa_engineer, target_file: str, config: dic
     
     return analysis_task, refactor_task, test_task
 
-# Crew setup
+# ============================================================================
+# SETUP CREW
+# ============================================================================
 def setup_crew(agents: tuple, tasks: tuple, config: dict) -> Crew:
     """Create the CrewAI crew."""
     crew_config = config.get('crew', {})
@@ -160,8 +168,10 @@ def setup_crew(agents: tuple, tasks: tuple, config: dict) -> Crew:
         max_rpm=crew_config.get('max_rpm', 1)
     )
 
-# Retry logic
-def run_with_retry(crew: Crew, config: dict, target_file: str) -> Any:
+# ============================================================================
+# RETRY LOGIC
+# ============================================================================
+def run_with_retry(crew: Crew, config: dict, target_file: str) -> str:
     """Run the crew with exponential backoff retry logic."""
     retry_config = config.get('retry', {})
     max_retries = retry_config.get('max_retries', 3)
@@ -169,14 +179,11 @@ def run_with_retry(crew: Crew, config: dict, target_file: str) -> Any:
     
     for attempt in range(max_retries):
         try:
-            logger.info(f"\n{'='*70}")
             logger.info(f"Processing: {target_file} (Attempt {attempt + 1}/{max_retries})")
-            logger.info(f"{'='*70}\n")
             
             result = crew.kickoff()
             
-            logger.info(f"\nCOMPLETED: {target_file}")
-            logger.info(f"{'='*70}\n")
+            logger.info(f"\Completed: {target_file}")
             
             return result
         except Exception as e:
@@ -192,9 +199,9 @@ def run_with_retry(crew: Crew, config: dict, target_file: str) -> Any:
                 logger.error(f"Error processing {target_file}: {str(e)}")
                 raise
 
-    raise RuntimeError(f"Unable to process {target_file} after {max_retries} retries")
-
-# Report generation
+# ============================================================================
+# GENERATE REPORT
+# ============================================================================
 def generate_report(results: dict, config: dict):
     """Generate an HTML report of refactoring results."""
     report_file = config.get('output', {}).get('report_file', 'reports/refactoring_report.html')
@@ -231,21 +238,21 @@ def generate_report(results: dict, config: dict):
         <div class="summary">
             <h2>Summary</h2>
             <p>Total files processed: {len(results)}</p>
-            <p>Successful: {successful_count}</p>
-            <p>Failed: {failed_count}</p>
-            <p>Total inference time: {total_inference_time:.2f}s</p>
-            <p>Average inference time per file: {average_inference_time:.2f}s</p>
+            <p>Successful: {sum(1 for r in results.values() if r.get('status') == 'success')}</p>
+            <p>Failed: {sum(1 for r in results.values() if r.get('status') == 'failed')}</p>
         </div>
     """
     
     for file_name, result in results.items():
         status_class = "success" if result.get('status') == 'success' else "error"
+        inference_time = result.get('inference_time', 0)
+        time_str = f"{inference_time:.2f}s" if inference_time else "N/A"
         html_content += f"""
         <div class="file">
             <h3 class="{status_class}">{file_name}</h3>
             <p><strong>Status:</strong> {result.get('status', 'Unknown')}</p>
+            <p><strong>Inference Time:</strong> {time_str}</p>
             <p><strong>Backup:</strong> {result.get('backup', 'N/A')}</p>
-            <p><strong>Inference time:</strong> {result.get('inference_time_seconds', 0.0):.2f}s</p>
         </div>
         """
     
@@ -259,8 +266,9 @@ def generate_report(results: dict, config: dict):
     
     logger.info(f"Report saved to {report_file}")
 
-
-
+# ============================================================================
+# MAIN EXECUTION
+# ============================================================================
 def main():
     """Main entry point with CLI argument parsing."""
     parser = argparse.ArgumentParser(
@@ -268,12 +276,12 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
             Examples:
-            python main.py                              # Use config.yaml (default)
-            python main.py --file target_repo/bad_code.py
-            python main.py --config custom_config.yaml
-            python main.py --aggressive
-            python main.py --no-backup
-            python main.py --file file1.py --file file2.py
+                python main.py                              # Use config.yaml (default)
+                python main.py --file target_repo/bad_code.py
+                python main.py --config custom_config.yaml
+                python main.py --aggressive
+                python main.py --no-backup
+                python main.py --file file1.py --file file2.py
         """
     )
     
@@ -312,13 +320,11 @@ def main():
     
     args = parser.parse_args()
     
-    # Setup logging
     global logger
     logger = setup_logging()
-    logger.info("CodeBase Agent starting")
+    logger.info("CodeBase Agent Starting")
     logger.info(f"Python {sys.version}")
     
-    # Load configuration
     try:
         config = load_config(args.config)
         logger.info(f"Loaded config from {args.config}")
@@ -326,7 +332,6 @@ def main():
         logger.error(str(e))
         sys.exit(1)
     
-    # Override config with CLI arguments
     if args.files:
         config['processing']['files'] = args.files
         logger.info(f"Override files: {args.files}")
@@ -343,8 +348,7 @@ def main():
         config['processing']['backup_originals'] = False
         logger.info("Backup disabled")
     
-    # Get target files
-    target_files = config.get('processing', {}).get('files', ['target_repo/bad_code.py'])
+    target_files = config.get('processing', {}).get('files', ['target_repo/_1.py'])
     logger.info(f"Processing {len(target_files)} file(s)")
     
     # Setup LLM
@@ -355,9 +359,8 @@ def main():
     results = {}
     
     for target_file in target_files:
-        logger.info(f"\n{'─'*70}")
         logger.info(f"Processing: {target_file}")
-        logger.info(f"{'─'*70}")
+        start_time = time.time()
         
         try:
             # Backup original file
@@ -367,34 +370,30 @@ def main():
             
             # Setup agents and tasks
             agents = setup_agents(llm, config, target_file)
-            tasks = setup_tasks(agents[0], agents[1], agents[2], target_file, config)
+            tasks = setup_tasks(*agents, target_file, config)
             
             # Create and run crew
             crew = setup_crew(agents, tasks, config)
-            inference_start = time.perf_counter()
             result = run_with_retry(crew, config, target_file)
-            inference_time_seconds = time.perf_counter() - inference_start
-            logger.info(f"Inference time for {target_file}: {inference_time_seconds:.2f}s")
             
+            inference_time = time.time() - start_time
             results[target_file] = {
                 'status': 'success',
                 'backup': backup_path,
-                'inference_time_seconds': inference_time_seconds,
-                'result': str(result)[:200]  # Truncate for report
+                'result': str(result)[:200],  # Truncate for report
+                'inference_time': inference_time
             }
             
         except Exception as e:
+            inference_time = time.time() - start_time
             logger.error(f"Failed to process {target_file}: {str(e)}")
             results[target_file] = {
                 'status': 'failed',
-                'inference_time_seconds': 0.0,
-                'error': str(e)
+                'error': str(e),
+                'inference_time': inference_time
             }
     
-    # Generate report
-    logger.info(f"\n{'='*70}")
     logger.info("Processing complete")
-    logger.info(f"{'='*70}")
     generate_report(results, config)
     
     # Summary

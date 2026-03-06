@@ -13,7 +13,7 @@ def read_file_tool(file_path: str) -> str:
         return f"Failed to read file: {str(e)}"
 
 @tool("Write to File Tool")
-def write_file_tool(file_path: str, content: str) -> str:
+def write_to_file_tool(file_path: str, content: str) -> str:
     """Overwrites a file with new content. Extremely useful for refactoring."""
     try:
         if "target_repo" not in file_path:
