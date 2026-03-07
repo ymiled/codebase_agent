@@ -21,3 +21,6 @@ target_repo/test_*.py
 reports/
 logs/
 backups/
+
+synthetic_codebase/
+rag_data/
