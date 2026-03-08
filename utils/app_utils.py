@@ -1,3 +1,4 @@
+import difflib
 import os
 import time
 import sys
@@ -169,44 +170,153 @@ def generate_report(results: dict, config: dict, logger: logging.Logger) -> None
     report_file = config.get("output", {}).get("report_file", "reports/refactoring_report.html")
     Path(report_file).parent.mkdir(parents=True, exist_ok=True)
 
+    compliance_summary = {"critical": 0, "high": 0, "medium": 0, "low": 0, "total": 0}
+    for result in results.values():
+        file_summary = (result.get("compliance") or {}).get("summary", {})
+        compliance_summary["critical"] += file_summary.get("critical", 0)
+        compliance_summary["high"] += file_summary.get("high", 0)
+        compliance_summary["medium"] += file_summary.get("medium", 0)
+        compliance_summary["low"] += file_summary.get("low", 0)
+        compliance_summary["total"] += file_summary.get("total", 0)
+
     html_content = f"""
     <html>
     <head>
         <title>CodeBase Agent Report</title>
         <style>
-            body {{ font-family: Arial, sans-serif; margin: 20px; }}
-            h1 {{ color: #333; }}
-            .success {{ color: green; }}
-            .error {{ color: red; }}
-            .file {{ background: #f5f5f5; padding: 15px; margin: 10px 0; border-left: 4px solid #4CAF50; }}
-            .summary {{ background: #e8f5e9; padding: 15px; margin: 10px 0; border-radius: 5px; }}
+            body {{ font-family: Arial, sans-serif; margin: 20px; background: #f9f9f9; }}
+            h1 {{ color: #333; border-bottom: 3px solid #4CAF50; padding-bottom: 10px; }}
+            h2 {{ color: #555; margin-top: 25px; }}
+            h3 {{ color: #777; }}
+            .success {{ color: #4CAF50; font-weight: bold; }}
+            .error {{ color: #f44336; font-weight: bold; }}
+            .warning {{ color: #ff9800; font-weight: bold; }}
+            .file-section {{ background: white; padding: 20px; margin: 15px 0; border-left: 5px solid #4CAF50; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+            .file-section.failed {{ border-left-color: #f44336; }}
+            .summary {{ background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+            .metric {{ display: inline-block; margin: 10px 20px 10px 0; }}
+            .metric-value {{ font-size: 24px; font-weight: bold; color: #4CAF50; }}
+            .metric-label {{ font-size: 14px; color: #666; }}
+            .detail {{ background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 4px; font-family: monospace; }}
+            .section-title {{ background: #e3f2fd; padding: 10px; margin: 15px 0 10px 0; border-left: 4px solid #2196F3; font-weight: bold; }}
+            table {{ width: 100%; border-collapse: collapse; margin: 15px 0; }}
+            th {{ background: #f5f5f5; padding: 10px; text-align: left; border-bottom: 2px solid #ddd; }}
+            td {{ padding: 10px; border-bottom: 1px solid #ddd; }}
+            tr:hover {{ background: #f9f9f9; }}
         </style>
     </head>
     <body>
-        <h1>CodeBase Agent Refactoring Report</h1>
-        <p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        <h1>CodeBase Agent Analysis Report</h1>
+        <p><em>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</em></p>
+        
         <div class="summary">
-            <h2>Summary</h2>
-            <p>Total files processed: {len(results)}</p>
-            <p>Successful: {sum(1 for r in results.values() if r.get('status') == 'success')}</p>
-            <p>Failed: {sum(1 for r in results.values() if r.get('status') == 'failed')}</p>
+            <h2 style="margin-top: 0;">Summary</h2>
+            <div class="metric">
+                <div class="metric-value">{len(results)}</div>
+                <div class="metric-label">Files Analyzed</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value"><span class="success">{sum(1 for r in results.values() if r.get('status') == 'success')}</span></div>
+                <div class="metric-label">Successful</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value"><span class="error">{sum(1 for r in results.values() if r.get('status') == 'failed')}</span></div>
+                <div class="metric-label">Failed</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">{sum(r.get('inference_time', 0) for r in results.values()):.1f}s</div>
+                <div class="metric-label">Total Processing Time</div>
+            </div>
         </div>
+
+        <div class="summary" style="background: linear-gradient(135deg, #fff8e1 0%, #ffe0b2 100%);">
+            <h2 style="margin-top: 0;">Compliance Findings</h2>
+            <div class="metric">
+                <div class="metric-value" style="color:#c62828;">{compliance_summary['critical']}</div>
+                <div class="metric-label">Critical</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" style="color:#e65100;">{compliance_summary['high']}</div>
+                <div class="metric-label">High</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" style="color:#f57f17;">{compliance_summary['medium']}</div>
+                <div class="metric-label">Medium</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" style="color:#33691e;">{compliance_summary['low']}</div>
+                <div class="metric-label">Low</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">{compliance_summary['total']}</div>
+                <div class="metric-label">Total Findings</div>
+            </div>
+        </div>
+
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Status</th>
+                <th>Time (s)</th>
+                <th>Backup Location</th>
+            </tr>
     """
 
     for file_name, result in results.items():
         status_class = "success" if result.get("status") == "success" else "error"
+        status_text = result.get("status", "Unknown").upper()
         inference_time = result.get("inference_time", 0)
-        time_str = f"{inference_time:.2f}s" if inference_time else "N/A"
+        time_str = f"{inference_time:.2f}" if inference_time else "N/A"
+        backup_loc = result.get("backup", "N/A")
+
         html_content += f"""
-        <div class="file">
-            <h3 class="{status_class}">{file_name}</h3>
-            <p><strong>Status:</strong> {result.get('status', 'Unknown')}</p>
-            <p><strong>Inference Time:</strong> {time_str}</p>
-            <p><strong>Backup:</strong> {result.get('backup', 'N/A')}</p>
+            <tr>
+                <td>{file_name}</td>
+                <td class="{status_class}">{status_text}</td>
+                <td>{time_str}</td>
+                <td>{backup_loc}</td>
+            </tr>
+        """
+
+    html_content += """
+        </table>
+
+        <h2>Detailed Results</h2>
+    """
+
+    for file_name, result in results.items():
+        status_class = "file-section" if result.get("status") == "success" else "file-section failed"
+        status_text = result.get("status", "Unknown").upper()
+        
+        html_content += f"""
+        <div class="{status_class}">
+            <h3>{file_name} <span class="{'success' if result.get('status') == 'success' else 'error'}">({status_text})</span></h3>
+            <p><strong>Analysis Time:</strong> {result.get('inference_time', 0):.2f}s</p>
+        """
+
+        if result.get("status") == "success":
+            comp = (result.get("compliance") or {}).get("summary", {})
+            html_content += f"""
+            <p><strong>Backup Location:</strong> {result.get('backup', 'N/A')}</p>
+            <p><strong>Compliance:</strong> critical={comp.get('critical', 0)}, high={comp.get('high', 0)}, medium={comp.get('medium', 0)}, low={comp.get('low', 0)}</p>
+            
+            """
+        else:
+            html_content += f"""
+            <div class="detail" style="background: #ffebee; color: #c62828;">
+                <strong>Error:</strong> {result.get('error', 'Unknown error')}
+            </div>
+            """
+
+        html_content += """
         </div>
         """
 
     html_content += """
+        <footer style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #999; font-size: 12px;">
+            <p>CodeBase Agent - Automated Code Analysis & Refactoring System</p>
+            <p>Powered by CrewAI with RAG, Dependency Analysis & Performance Benchmarking</p>
+        </footer>
     </body>
     </html>
     """
@@ -215,3 +325,33 @@ def generate_report(results: dict, config: dict, logger: logging.Logger) -> None
         f.write(html_content)
 
     logger.info(f"Report saved to {report_file}")
+
+
+def generate_diff(original_path: str, modified_path: str, output_dir: str, logger: logging.Logger) -> Optional[str]:
+    """Generate a unified diff between the backup (original) and the current (modified) file."""
+    try:
+        with open(original_path, "r", encoding="utf-8") as f:
+            original_lines = f.readlines()
+        with open(modified_path, "r", encoding="utf-8") as f:
+            modified_lines = f.readlines()
+
+        diff = difflib.unified_diff(
+            original_lines,
+            modified_lines,
+            fromfile=f"original/{Path(modified_path).name}",
+            tofile=f"refactored/{Path(modified_path).name}",
+        )
+        diff_text = "".join(diff)
+
+        if not diff_text:
+            logger.info(f"No changes detected for {modified_path}")
+            return None
+
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        diff_file = Path(output_dir) / f"{Path(modified_path).stem}.diff"
+        diff_file.write_text(diff_text, encoding="utf-8")
+        logger.info(f"Diff saved to {diff_file}")
+        return str(diff_file)
+    except Exception as e:
+        logger.warning(f"Failed to generate diff: {e}")
+        return None

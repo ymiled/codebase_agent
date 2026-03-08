@@ -6,7 +6,7 @@ llm:
   max_tokens: 1024
 
 agents:
-  architect:
+  analyst:
     max_iter: 1  # Less analysis
     enable: true
   developer:
@@ -26,12 +26,16 @@ processing:
   files:
     - "target_repo/bad_code_1.py"
     - "target_repo/bad_code_2.py"
+    - "target_repo/deps_shared.py"
+    - "target_repo/deps_a.py"
+    - "target_repo/deps_b.py"
   refactoring_level: "conservative"
   backup_originals: true
 
 retry:
-  max_retries: 2
+  max_retries: 5
   backoff_multiplier: 10
+  file_cooldown: 60
 
 output:
   log_file: "logs/codebase_agent_conservative.log"

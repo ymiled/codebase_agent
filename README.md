@@ -1,7 +1,6 @@
 # CodeBase Agent - Automated code refactoring
 
-An intelligent multi-agent system powered by CrewAI with **RAG (Retrieval-Augmented Generation)** that automatically analyzes, refactors, and tests Python code using language models while learning from your existing codebase patterns.
-
+An intelligent **3-agent system** powered by CrewAI with **RAG (Retrieval-Augmented Generation)** that automatically analyzes, refactors, and tests Python code using language models while learning from your existing codebase patterns.
 
 ## Installation
 
@@ -70,6 +69,8 @@ type logs\codebase_agent.log
 - Backup confirmations
 - Processing progress
 - Rate limit notifications
+- Dependency analysis summaries
+- Benchmark results
 - Error details
 - Timestamps for all events
 
@@ -82,10 +83,11 @@ start reports/refactoring_report.html  # Windows
 ```
 
 **Reports show:**
-- Total files processed
+- Total files processed & processing time
 - Success/failure count
+- Per-file analysis results
 - Backup locations
-- Per-file status
+- Detailed status for each agent
 
 ### Auto backups
 Originals are backed up to timestamped folders (`YYYYMMDD_HHMMSS`):
@@ -128,6 +130,41 @@ rag:
   index_on_startup: true      # Auto-index codebase
   n_results: 3                # Snippets per search
 ```
+
+## Compliance 
+
+### Deterministic rule engine
+
+The scanner detects issues such as:
+- Silent exception swallowing (`except Exception ...` + `pass`)
+- SQL injection risk patterns (`execute(f"...")`)
+- Hardcoded credential-like assignments (`api_key`, `token`, `password`, etc.)
+- Hardcoded bypass/allow lists
+- Unsafe shutdown patterns (`os._exit(...)`)
+- Other auditability/data-integrity anti-patterns
+
+Each finding contains:
+- `rule_id`
+- `severity` (`critical`, `high`, `medium`, `low`)
+- `category`
+- `file` and `line`
+- `evidence`
+- `recommendation`
+
+
+### Quality gate
+
+Set severity threshold in `configs/config.yaml`:
+
+```yaml
+compliance:
+  fail_on_severity: "critical"  # critical|high|medium|low or null to disable
+  findings_file: "reports/compliance_findings.json"
+  audit_log_file: "reports/compliance_audit_log.jsonl"
+```
+
+
+
 
 ## Common use cases
 

@@ -16,11 +16,12 @@ credentials.json
 .DS_Store
 Thumbs.db
 
-target_repo/test_*.py
+target_repo/*test*.py
 
 reports/
 logs/
 backups/
+diffs/
 
 synthetic_codebase/
 rag_data/

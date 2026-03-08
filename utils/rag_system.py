@@ -41,19 +41,14 @@ class RAGCodebaseIndex:
         
         logger.info(f"Initializing RAG system with model: {model_name}")
         
-        # Initialize persistent ChromaDB client (new API)
+        # Initialize persistent ChromaDB client
         self.client = chromadb.PersistentClient(path=persist_directory)
         
-        # Get or create collection
-        try:
-            self.collection = self.client.get_collection(name=collection_name)
-            logger.info(f"Loaded existing collection: {collection_name}")
-        except:
-            self.collection = self.client.create_collection(
-                name=collection_name,
-                metadata={"description": "Code snippets from the codebase"}
-            )
-            logger.info(f"Created new collection: {collection_name}")
+        self.collection = self.client.get_or_create_collection(
+            name=collection_name,
+            metadata={"description": "Code snippets from the codebase"}
+        )
+        logger.info(f"Using collection: {collection_name}")
         
         # Initialize embedding model
         self.embedding_model = SentenceTransformer(model_name)

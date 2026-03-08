@@ -7,7 +7,7 @@ llm:
   max_tokens: 1024
 # Agent Settings
 agents:
-  architect:
+  analyst:
     max_iter: 2
     enable: true
   developer:
@@ -29,6 +29,9 @@ processing:
   files:
     - "target_repo/bad_code_1.py"
     - "target_repo/bad_code_2.py"
+    - "target_repo/deps_shared.py"
+    - "target_repo/deps_a.py"
+    - "target_repo/deps_b.py"
   # To process multiple files, add them here:
   # - "target_repo/another_file.py"
   # - "src/module.py"
@@ -41,12 +44,22 @@ processing:
 
 # Retry Settings
 retry:
-  max_retries: 3
+  max_retries: 5
   backoff_multiplier: 15  # Base wait time in seconds (15, 30, 60...)
+  file_cooldown: 60      # Seconds to wait between files to avoid rate limits
 
 # Output Settings
 output:
   log_file: "logs/codebase_agent.log"
+  report_file: "reports/refactoring_report.html"
+  save_diffs: true
+  diffs_dir: "diffs"
+
+# Compliance Settings
+compliance:
+  fail_on_severity: "critical"  # one of: critical, high, medium, low, or null to disable gate
+  findings_file: "reports/compliance_findings.json"
+  audit_log_file: "reports/compliance_audit_log.jsonl"
 
 # RAG (Retrieval-Augmented Generation) Settings
 rag:
@@ -63,6 +76,9 @@ rag:
   index_directories:
     - "target_repo"           # Your actual code to refactor
     - "synthetic_codebase"    # LLM-generated patterns for RAG to learn from
-  report_file: "reports/refactoring_report.html"
-  save_diffs: true
-  diffs_dir: "diffs"
+    # synthetic_codebase/compliance/ is included above and provides:
+    #   - secure_transaction_service.py  (AML/KYC screening, parameterized SQL, audit trails)
+    #   - audit_logging.py              (hash-chained audit logs, SOX/PCI patterns)
+    #   - secrets_management.py         (env-based secrets, CWE-798 prevention)
+    #   - input_validation.py           (amount/IBAN validation, PII masking)
+    #   - kyc_workflow.py               (tiered KYC, PEP detection, FATF Rec 10/12)

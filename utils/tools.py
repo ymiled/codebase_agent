@@ -25,9 +25,11 @@ def read_file_tool(file_path: str) -> str:
 def write_to_file_tool(file_path: str, content: str) -> str:
     """Overwrites a file with new content. Extremely useful for refactoring."""
     try:
-        if "target_repo" not in file_path:
+        real_path = os.path.realpath(file_path)
+        allowed_dir = os.path.realpath("target_repo")
+        if not real_path.startswith(allowed_dir + os.sep) and real_path != allowed_dir:
             return "Error: Unauthorized path. Only write to target_repo/"
-            
+
         with open(file_path, 'w') as f:
             f.write(content)
         return f"Successfully wrote to {file_path}"
@@ -134,3 +136,179 @@ def rag_context_tool(file_path: str, query: str = "similar patterns and implemen
         return output
     except Exception as e:
         return f"Failed to retrieve context: {str(e)}"
+
+@tool("Analyze Dependencies Tool")
+def analyze_dependencies_tool(target_file: str, search_directory: str = "target_repo") -> str:
+    """
+    Analyze cross-file dependencies for a target file.
+    Finds all imports FROM this file and all imports TO this file from other files.
+    
+    Args:
+        target_file: The file to analyze (e.g., 'target_repo/bad_code_1.py')
+        search_directory: Directory to search for files that depend on target (default: 'target_repo')
+    
+    Returns:
+        A dependency graph showing relationships between files
+    """
+    import ast
+    import re
+    
+    try:
+        # Read target file
+        if not os.path.exists(target_file):
+            return f"Error: Target file {target_file} not found"
+        
+        with open(target_file, 'r') as f:
+            target_content = f.read()
+        
+        # Parse imports from target file
+        try:
+            tree = ast.parse(target_content)
+            imports_from_target = set()
+            functions_in_target = set()
+            classes_in_target = set()
+            
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        imports_from_target.add(alias.name)
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module:
+                        imports_from_target.add(node.module)
+                elif isinstance(node, ast.FunctionDef):
+                    functions_in_target.add(node.name)
+                elif isinstance(node, ast.ClassDef):
+                    classes_in_target.add(node.name)
+        except SyntaxError as e:
+            return f"Syntax error in target file: {e}"
+        
+        # Find files that import from target
+        imports_to_target = []
+        if os.path.exists(search_directory):
+            for root, dirs, files in os.walk(search_directory):
+                for file in files:
+                    if file.endswith('.py') and file != os.path.basename(target_file):
+                        file_path = os.path.join(root, file)
+                        try:
+                            with open(file_path, 'r') as f:
+                                content = f.read()
+                            
+                            # Search for imports of target module
+                            target_name = os.path.splitext(os.path.basename(target_file))[0]
+                            if target_name in content and ('import ' + target_name in content or 'from ' + target_name in content):
+                                imports_to_target.append(file_path)
+                        except:
+                            pass
+        
+        # Build dependency report
+        report = f"=== Dependency Analysis for {os.path.basename(target_file)} ===\n\n"
+        report += f"IMPORTS FROM THIS FILE:\n"
+        report += f"  External modules: {', '.join(sorted(imports_from_target)) if imports_from_target else 'None'}\n\n"
+        report += f"EXPORTS FROM THIS FILE:\n"
+        report += f"  Functions: {', '.join(sorted(functions_in_target)) if functions_in_target else 'None'}\n"
+        report += f"  Classes: {', '.join(sorted(classes_in_target)) if classes_in_target else 'None'}\n\n"
+        report += f"FILES THAT DEPEND ON THIS FILE:\n"
+        if imports_to_target:
+            for dep_file in imports_to_target:
+                report += f"  - {dep_file}\n"
+        else:
+            report += "  None found\n"
+        
+        return report
+        
+    except Exception as e:
+        return f"Dependency analysis failed: {str(e)}"
+
+@tool("Run Benchmark Tool")
+def run_benchmark_tool(original_file: str, refactored_file: str = None) -> str:
+    """
+    Run performance benchmarks comparing original vs refactored code.
+    If no refactored file provided, searches for a *_test.py version.
+    
+    Args:
+        original_file: Path to original file (or the refactored one to compare)
+        refactored_file: Path to refactored version (optional)
+    
+    Returns:
+        Benchmark results with timing comparisons
+    """
+    import timeit
+    import tempfile
+    import importlib.util
+    
+    try:
+        # Determine which files to benchmark
+        original = original_file
+        refactored = refactored_file
+        
+        # Try to find test file if refactored not specified
+        if not refactored:
+            base_name = original.replace('.py', '')
+            potential_test = base_name + '_test.py'
+            if os.path.exists(potential_test):
+                refactored = potential_test
+            else:
+                return f"Cannot benchmark: no refactored file found. Provide refactored_file path."
+        
+        if not os.path.exists(original) or not os.path.exists(refactored):
+            return f"File not found: original={os.path.exists(original)}, refactored={os.path.exists(refactored)}"
+        
+        # Extract main functions to benchmark
+        def extract_main_function(file_path):
+            with open(file_path, 'r') as f:
+                content = f.read()
+            
+            # Find first function definition
+            match = re.search(r'def (\w+)\(', content)
+            if match:
+                return match.group(1), content
+            return None, content
+        
+        original_func_name, original_code = extract_main_function(original)
+        refactored_func_name, refactored_code = extract_main_function(refactored)
+        
+        if not original_func_name or not refactored_func_name:
+            return "Could not find function definitions to benchmark"
+        
+        # Run benchmarks
+        try:
+            original_time = timeit.timeit(
+                f'{original_func_name}([1, 2, 3, 4, 5])',
+                setup=original_code,
+                number=1000
+            )
+        except:
+            original_time = None
+        
+        try:
+            refactored_time = timeit.timeit(
+                f'{refactored_func_name}([1, 2, 3, 4, 5])',
+                setup=refactored_code,
+                number=1000
+            )
+        except:
+            refactored_time = None
+        
+        # Generate report
+        report = f"=== Performance Benchmark Report ===\n\n"
+        report += f"Original file: {original}\n"
+        report += f"Refactored file: {refactored}\n\n"
+        
+        if original_time and refactored_time:
+            improvement = ((original_time - refactored_time) / original_time) * 100
+            speedup = original_time / refactored_time
+            
+            report += f"Original ({original_func_name}): {original_time:.6f}s for 1000 iterations\n"
+            report += f"Refactored ({refactored_func_name}): {refactored_time:.6f}s for 1000 iterations\n\n"
+            
+            if improvement > 0:
+                report += f"Improvement: {improvement:.2f}% faster ({speedup:.2f}x speedup)\n"
+            else:
+                report += f"Regression: {abs(improvement):.2f}% slower\n"
+        else:
+            report += "Could not complete benchmarks - verify functions are executable\n"
+        
+        return report
+        
+    except Exception as e:
+        return f"Benchmark failed: {str(e)}"
