@@ -72,19 +72,34 @@ def setup_agents(llm: LLM, config: dict, target_file: str, rag_enabled: bool = F
     return agents
 
 
+def _format_findings_for_prompt(findings: list[dict]) -> str:
+    """Format compliance findings as a concise string for agent prompts."""
+    if not findings:
+        return "No compliance findings from pre-scan."
+    lines = []
+    for f in findings:
+        lines.append(f"- [{f.get('severity', '?').upper()}] {f.get('rule_id', '?')}: "
+                      f"{f.get('description', '')} (line {f.get('line', '?')})")
+    return "\n".join(lines)
+
+
 def setup_tasks(
     agents: dict[str, Agent],
     target_file: str,
     config: dict,
+    compliance_findings: list[dict] | None = None,
 ) -> list[Task]:
     """Create tasks for enabled agents."""
     tasks: list[Task] = []
     _refactoring_level = config.get("processing", {}).get("refactoring_level", "aggressive")
+    findings_text = _format_findings_for_prompt(compliance_findings or [])
 
     if "analyst" in agents:
         tasks.append(Task(
             description=(
-                f"Read {target_file}. List the top 5 compliance and reliability findings with severity "
+                f"Read {target_file}. The compliance pre-scan found these issues:\n{findings_text}\n\n"
+                "Verify each finding above, identify any additional issues the regex missed, and list "
+                "the top 5 compliance and reliability findings with severity "
                 "(critical/high/medium/low), evidence, and concrete fix. Prioritize AML/KYC impact first. "
                 f"Also analyze all cross-file dependencies for {target_file} and report the dependency graph."
             ),

@@ -144,9 +144,31 @@ def process_files(config: dict, logger) -> dict:
                 backup_path = backup_file(target_file, logger)
 
             agents = setup_agents(llm, config, target_file, rag_enabled=rag_enabled)
-            tasks = setup_tasks(agents, target_file, config)
+            tasks = setup_tasks(agents, target_file, config, compliance_findings=compliance_scan.get("findings", []))
             crew = setup_crew(list(agents.values()), tasks, config)
             result = run_with_retry(crew, config, target_file, logger)
+
+            # Post-refactor compliance scan + rollback if worse
+            post_scan = scan_file_for_compliance(target_file)
+            pre_critical = compliance_scan.get("summary", {}).get("critical", 0)
+            post_critical = post_scan.get("summary", {}).get("critical", 0)
+            if post_critical > pre_critical and backup_path:
+                import shutil
+                shutil.copy2(backup_path, target_file)
+                logger.error(
+                    "Agents introduced new critical findings in %s (%d -> %d) — rolled back to backup",
+                    target_file, pre_critical, post_critical,
+                )
+                post_scan = compliance_scan  # reset to pre-scan after rollback
+            else:
+                logger.info(
+                    "Post-refactor compliance for %s: critical=%s high=%s medium=%s low=%s",
+                    target_file,
+                    post_scan.get("summary", {}).get("critical", 0),
+                    post_scan.get("summary", {}).get("high", 0),
+                    post_scan.get("summary", {}).get("medium", 0),
+                    post_scan.get("summary", {}).get("low", 0),
+                )
 
             # Generate diff if backup exists and diffs are enabled
             diff_path = None
@@ -162,7 +184,7 @@ def process_files(config: dict, logger) -> dict:
                 "diff": diff_path,
                 "result": str(result)[:200],
                 "inference_time": inference_time,
-                "compliance": compliance_scan,
+                "compliance": post_scan,
             }
 
         except Exception as e:

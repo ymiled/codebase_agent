@@ -57,7 +57,7 @@ output:
 
 # Compliance Settings
 compliance:
-  fail_on_severity: "critical"  # one of: critical, high, medium, low, or null to disable gate
+  fail_on_severity: "high"  # one of: critical, high, medium, low, or null to disable gate
   findings_file: "reports/compliance_findings.json"
   audit_log_file: "reports/compliance_audit_log.jsonl"
 

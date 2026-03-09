@@ -118,6 +118,50 @@ RULES: List[Dict[str, str]] = [
         "regex": r"\btype\s*\(",
         "recommendation": "Use isinstance and normalize inputs in a single validator function.",
     },
+    {
+        "rule_id": "AML-SEC-003",
+        "severity": "critical",
+        "category": "security",
+        "cwe": "CWE-95",
+        "owasp": "A03:2021 Injection",
+        "regulation": "PCI DSS Req 6.5.1",
+        "description": "Use of eval() or exec() enables arbitrary code execution.",
+        "regex": r"\b(eval|exec)\s*\(",
+        "recommendation": "Remove eval/exec and use safe alternatives like ast.literal_eval or explicit parsing.",
+    },
+    {
+        "rule_id": "AML-SEC-004",
+        "severity": "critical",
+        "category": "security",
+        "cwe": "CWE-78",
+        "owasp": "A03:2021 Injection",
+        "regulation": "PCI DSS Req 6.5.1",
+        "description": "subprocess with shell=True enables command injection.",
+        "regex": r"shell\s*=\s*True",
+        "recommendation": "Use shell=False (default) and pass arguments as a list.",
+    },
+    {
+        "rule_id": "AML-SEC-005",
+        "severity": "high",
+        "category": "security",
+        "cwe": "CWE-502",
+        "owasp": "A08:2021 Software and Data Integrity Failures",
+        "regulation": "",
+        "description": "pickle deserialization can execute arbitrary code from untrusted data.",
+        "regex": r"pickle\.loads?\s*\(",
+        "recommendation": "Use safe formats like JSON. If pickle is required, only load from trusted sources.",
+    },
+    {
+        "rule_id": "AML-SEC-006",
+        "severity": "critical",
+        "category": "security",
+        "cwe": "CWE-89",
+        "owasp": "A03:2021 Injection",
+        "regulation": "PCI DSS Req 6.5.1",
+        "description": "SQL injection via .format() string query execution.",
+        "regex": r"execute\s*\(.*\.format\s*\(",
+        "recommendation": "Use parameterized queries, never format SQL with user data.",
+    },
 ]
 
 
@@ -224,7 +268,7 @@ def write_compliance_artifacts(
     results: Dict[str, Dict[str, Any]],
     findings_path: str,
     audit_log_path: str,
-) -> Dict[str, str]:
+    ) -> Dict[str, str]:
     compliance = aggregate_compliance(results)
 
     findings_file = Path(findings_path)

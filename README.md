@@ -164,8 +164,6 @@ compliance:
 ```
 
 
-
-
 ## Common use cases
 
 ### Use case 1: Single file
