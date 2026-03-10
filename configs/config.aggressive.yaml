@@ -3,7 +3,7 @@
 llm:
   model: "groq/llama-3.3-70b-versatile"
   temperature: 0.0
-  max_tokens: 1024
+  max_tokens: 4096
 
 agents:
   analyst:
@@ -19,7 +19,7 @@ agents:
 crew:
   process: "hierarchical"  # Manager-based for complex decisions
   memory: true  # Keep context for detailed work
-  max_rpm: 1
+  max_rpm: 25
   verbose: true  # Full output for monitoring
 
 processing:
@@ -35,7 +35,7 @@ processing:
 retry:
   max_retries: 5
   backoff_multiplier: 15
-  file_cooldown: 60
+  file_cooldown: 10
 
 output:
   log_file: "logs/codebase_agent_aggressive.log"

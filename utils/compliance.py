@@ -205,6 +205,13 @@ def scan_file_for_compliance(file_path: str) -> Dict[str, Any]:
         pattern = re.compile(rule["regex"], flags=re.IGNORECASE | re.MULTILINE)
         for idx, line in enumerate(lines, start=1):
             if pattern.search(line):
+                # Context-aware suppression for file-write audit rule:
+                # If a logger/logging call appears within 2 lines above, the write is audited.
+                if rule["rule_id"] == "AML-OPS-001":
+                    context_start = max(0, idx - 3)  # 2 lines above (0-based)
+                    nearby = lines[context_start:idx - 1]
+                    if any("logger." in l or "logging." in l for l in nearby):
+                        continue
                 findings.append(_build_finding(rule, file_path, idx, line))
 
     counts = Counter(f["severity"] for f in findings)

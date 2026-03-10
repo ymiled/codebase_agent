@@ -151,12 +151,22 @@ def run_with_retry(crew: Crew, config: dict, target_file: str, logger: logging.L
             return result
         except Exception as e:
             error_msg = str(e).lower()
-            if "rate_limit" in error_msg or "tokens per minute" in error_msg:
+            if "rate_limit" in error_msg or "tokens per minute" in error_msg or "tokens per day" in error_msg:
                 wait_time = (2 ** attempt) * backoff_multiplier
                 logger.warning(f"Rate limit hit. Waiting {wait_time}s before retry...")
                 time.sleep(wait_time)
                 if attempt == max_retries - 1:
                     logger.error(f"Failed {target_file} after {max_retries} retries.")
+                    raise
+            elif "tool_use_failed" in error_msg or "failed_generation" in error_msg:
+                wait_time = (2 ** attempt) * backoff_multiplier
+                logger.warning(
+                    f"LLM generated malformed tool call for {target_file} "
+                    f"(attempt {attempt + 1}/{max_retries}). Retrying in {wait_time}s..."
+                )
+                time.sleep(wait_time)
+                if attempt == max_retries - 1:
+                    logger.error(f"Failed {target_file} after {max_retries} retries (tool_use_failed).")
                     raise
             else:
                 logger.error(f"Error processing {target_file}: {str(e)}")

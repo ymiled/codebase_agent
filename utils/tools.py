@@ -1,8 +1,10 @@
 from crewai.tools import tool
+import re
 import subprocess
 import os
 from langchain_community.tools import DuckDuckGoSearchRun
 from utils.rag_system import RAGCodebaseIndex
+from utils.compliance import RULES
 
 # Global RAG instance (will be initialized in main.py)
 _rag_instance = None
@@ -66,25 +68,31 @@ def run_linter_tool(file_path: str) -> str:
     return result.stdout if result.stdout else "Linting passed with no errors."
 
 @tool("RAG Search Tool")
-def rag_search_tool(query: str, n_results: int = 3) -> str:
+def rag_search_tool(query: str, n_results: str = "3") -> str:
     """
     Search the codebase for relevant code examples and patterns using semantic search.
     Use this to find similar functions, patterns, or best practices already in the codebase.
     
     Args:
         query: What to search for (e.g., "error handling", "list comprehension", "sorting algorithms")
-        n_results: Number of relevant code snippets to return (default: 3)
+        n_results: Number of relevant code snippets to return as a string (default: "3")
     
     Returns:
         Relevant code snippets with file paths and context
     """
     global _rag_instance
     
+    # Groq LLM sometimes passes n_results as a string; coerce to int
+    try:
+        n_results_int = int(n_results)
+    except (TypeError, ValueError):
+        n_results_int = 3
+    
     if _rag_instance is None:
         return "RAG system not initialized. Enable 'rag.enable' in config.yaml"
     
     try:
-        results = _rag_instance.search(query, n_results=n_results)
+        results = _rag_instance.search(query, n_results=n_results_int)
         
         if not results:
             return f"No relevant code found for: {query}"
@@ -312,3 +320,53 @@ def run_benchmark_tool(original_file: str, refactored_file: str = None) -> str:
         
     except Exception as e:
         return f"Benchmark failed: {str(e)}"
+
+
+@tool("Check Compliance Tool")
+def check_compliance_tool(file_path: str) -> str:
+    """
+    Check a file for compliance violations AFTER writing it.
+    Call this after write_to_file_tool to verify no banned patterns remain.
+    If violations are found, read the file, fix the issues, write again, and re-check.
+
+    Args:
+        file_path: Path to the Python file to validate (e.g. 'target_repo/bad_code_1.py').
+
+    Returns:
+        A report listing any compliance violations found, or confirmation that the code is clean.
+    """
+    if not os.path.exists(file_path):
+        return f"File not found: {file_path}"
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            code = f.read()
+    except OSError as e:
+        return f"Cannot read file: {e}"
+
+    findings = []
+    lines = code.splitlines()
+    for rule in RULES:
+        if rule["severity"] not in ("critical", "high", "medium"):
+            continue
+        pattern = re.compile(rule["regex"], flags=re.IGNORECASE | re.MULTILINE)
+        for idx, line in enumerate(lines, start=1):
+            if pattern.search(line):
+                # Context-aware suppression for file-write rule:
+                # If logger/logging call is within 2 lines above, the write is audited.
+                if rule["rule_id"] == "AML-OPS-001":
+                    context_start = max(0, idx - 3)  # 2 lines above (0-based)
+                    nearby = lines[context_start:idx - 1]  # lines above the match
+                    if any("logger." in l or "logging." in l for l in nearby):
+                        continue
+                findings.append(
+                    f"  Line {idx} [{rule['severity'].upper()}] {rule['rule_id']}: "
+                    f"{rule['description']} — matched `{line.strip()[:120]}` — "
+                    f"Fix: {rule['recommendation']}"
+                )
+    if not findings:
+        return "COMPLIANCE CHECK PASSED — no violations found."
+    return (
+        f"COMPLIANCE CHECK FAILED — {len(findings)} violation(s) found:\n"
+        + "\n".join(findings)
+        + "\n\nFix these issues, write the file again, and re-check."
+    )
