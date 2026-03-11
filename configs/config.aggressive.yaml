@@ -42,3 +42,6 @@ output:
   report_file: "reports/refactoring_report_aggressive.html"
   save_diffs: true
   diffs_dir: "diffs"
+
+quality_metrics:
+  enable: true

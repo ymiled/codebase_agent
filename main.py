@@ -23,6 +23,7 @@ from utils.compliance import (
     should_fail_quality_gate,
     aggregate_compliance,
 )
+from utils.quality_metrics import compute_quality_metrics, compare_quality_metrics
 
 load_dotenv()
 
@@ -120,6 +121,7 @@ def process_files(config: dict, logger) -> dict:
 
     results = {}
     cooldown = config.get("retry", {}).get("file_cooldown", 60)
+    quality_enabled = config.get("quality_metrics", {}).get("enable", True)
     fatal_error = None  # Track non-transient errors to abort early
 
     for idx, target_file in enumerate(target_files):
@@ -141,6 +143,10 @@ def process_files(config: dict, logger) -> dict:
         start_time = time.time()
 
         try:
+            quality_before = None
+            if quality_enabled:
+                quality_before = compute_quality_metrics(target_file)
+
             compliance_scan = scan_file_for_compliance(target_file)
             compliance_summary = compliance_scan.get("summary", {})
             logger.info(
@@ -243,6 +249,18 @@ def process_files(config: dict, logger) -> dict:
 
             # Generate diff if backup exists and diffs are enabled
             diff_path = None
+            quality_after = None
+            quality_comparison = None
+
+            if quality_enabled:
+                quality_after = compute_quality_metrics(target_file)
+                quality_comparison = compare_quality_metrics(
+                    before_metrics=quality_before,
+                    after_metrics=quality_after,
+                    before_file_path=backup_path or target_file,
+                    after_file_path=target_file,
+                )
+
             output_config = config.get("output", {})
             if backup_path and output_config.get("save_diffs", False):
                 diffs_dir = output_config.get("diffs_dir", "diffs")
@@ -256,6 +274,12 @@ def process_files(config: dict, logger) -> dict:
                 "result": str(result)[:200],
                 "inference_time": inference_time,
                 "compliance": post_scan,
+                "quality_metrics": {
+                    "enabled": quality_enabled,
+                    "before": quality_before,
+                    "after": quality_after,
+                    "comparison": quality_comparison,
+                },
             }
 
         except Exception as e:
@@ -270,6 +294,12 @@ def process_files(config: dict, logger) -> dict:
                 "error": str(e),
                 "inference_time": inference_time,
                 "compliance": scan_file_for_compliance(target_file),
+                "quality_metrics": {
+                    "enabled": quality_enabled,
+                    "before": compute_quality_metrics(target_file) if quality_enabled else None,
+                    "after": None,
+                    "comparison": None,
+                },
             }
 
     return results

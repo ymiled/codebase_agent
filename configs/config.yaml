@@ -62,6 +62,10 @@ compliance:
   findings_file: "reports/compliance_findings.json"
   audit_log_file: "reports/compliance_audit_log.jsonl"
 
+# Code Quality Evaluation Settings
+quality_metrics:
+  enable: true
+
 # RAG (Retrieval-Augmented Generation) Settings
 rag:
   enable: true  # Set to false to disable RAG

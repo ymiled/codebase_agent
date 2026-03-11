@@ -88,6 +88,7 @@ start reports/refactoring_report.html  # Windows
 - Per-file analysis results
 - Backup locations
 - Detailed status for each agent
+- Quality metrics before/after comparison (Cyclomatic, MI, Halstead, code size, signal-to-noise)
 
 ### Auto backups
 Originals are backed up to timestamped folders (`YYYYMMDD_HHMMSS`):
@@ -161,6 +162,23 @@ compliance:
   fail_on_severity: "critical"  # critical|high|medium|low or null to disable
   findings_file: "reports/compliance_findings.json"
   audit_log_file: "reports/compliance_audit_log.jsonl"
+```
+
+## Code quality metrics evaluation
+
+The framework now tracks refactoring impact beyond compliance findings.
+
+- Cyclomatic Complexity (avg/max/total) where lower is better
+- Maintainability Index (0-100) where higher is better
+- Halstead metrics (difficulty, effort, estimated bugs) where lower is better
+- Code size (LOC, LLOC, comments, blanks)
+- Signal-to-noise score based on metric improvements vs lines changed
+
+Enable or disable in config:
+
+```yaml
+quality_metrics:
+  enable: true
 ```
 
 

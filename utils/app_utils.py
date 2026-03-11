@@ -6,7 +6,7 @@ import logging
 import shutil
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Any
+from typing import Optional, Any, Dict
 
 import yaml
 from crewai import Crew, LLM
@@ -175,12 +175,63 @@ def run_with_retry(crew: Crew, config: dict, target_file: str, logger: logging.L
     raise RuntimeError(f"Exhausted retries for {target_file}")
 
 
+def _aggregate_quality_summary(results: dict) -> Dict[str, float]:
+    summary = {
+        "files_with_metrics": 0,
+        "avg_mi_delta": 0.0,
+        "avg_cc_delta": 0.0,
+        "avg_halstead_bugs_delta": 0.0,
+        "avg_signal_to_noise": 0.0,
+    }
+
+    mi_deltas = []
+    cc_deltas = []
+    bug_deltas = []
+    stn_scores = []
+
+    for result in results.values():
+        quality = result.get("quality_metrics") or {}
+        comparison = quality.get("comparison") or {}
+        if comparison.get("status") != "ok":
+            continue
+
+        delta = comparison.get("delta") or {}
+        signal = comparison.get("signal_to_noise") or {}
+
+        summary["files_with_metrics"] += 1
+        mi_deltas.append(float(delta.get("maintainability_index", 0.0)))
+        cc_deltas.append(float(delta.get("cyclomatic_avg", 0.0)))
+        bug_deltas.append(float(delta.get("halstead_bugs", 0.0)))
+        stn_scores.append(float(signal.get("score", 0.0)))
+
+    file_count = summary["files_with_metrics"]
+    if file_count:
+        summary["avg_mi_delta"] = sum(mi_deltas) / file_count
+        summary["avg_cc_delta"] = sum(cc_deltas) / file_count
+        summary["avg_halstead_bugs_delta"] = sum(bug_deltas) / file_count
+        summary["avg_signal_to_noise"] = sum(stn_scores) / file_count
+
+    return summary
+
+
+def _format_delta(value: float, prefer_positive: bool) -> str:
+    if value > 0:
+        prefix = "+"
+    else:
+        prefix = ""
+    indicator = "improved" if (value > 0 and prefer_positive) or (value < 0 and not prefer_positive) else "degraded"
+    if abs(value) < 1e-9:
+        indicator = "neutral"
+    return f"{prefix}{value:.2f} ({indicator})"
+
+
 def generate_report(results: dict, config: dict, logger: logging.Logger) -> None:
     """Generate an HTML report of refactoring results."""
     report_file = config.get("output", {}).get("report_file", "reports/refactoring_report.html")
     Path(report_file).parent.mkdir(parents=True, exist_ok=True)
 
     compliance_summary = {"critical": 0, "high": 0, "medium": 0, "low": 0, "total": 0}
+    quality_summary = _aggregate_quality_summary(results)
     for result in results.values():
         file_summary = (result.get("compliance") or {}).get("summary", {})
         compliance_summary["critical"] += file_summary.get("critical", 0)
@@ -209,6 +260,7 @@ def generate_report(results: dict, config: dict, logger: logging.Logger) -> None
             .metric-label {{ font-size: 14px; color: #666; }}
             .detail {{ background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 4px; font-family: monospace; }}
             .section-title {{ background: #e3f2fd; padding: 10px; margin: 15px 0 10px 0; border-left: 4px solid #2196F3; font-weight: bold; }}
+            .subtle {{ color: #666; font-size: 13px; }}
             table {{ width: 100%; border-collapse: collapse; margin: 15px 0; }}
             th {{ background: #f5f5f5; padding: 10px; text-align: left; border-bottom: 2px solid #ddd; }}
             td {{ padding: 10px; border-bottom: 1px solid #ddd; }}
@@ -263,6 +315,31 @@ def generate_report(results: dict, config: dict, logger: logging.Logger) -> None
             </div>
         </div>
 
+        <div class="summary" style="background: linear-gradient(135deg, #e1f5fe 0%, #b3e5fc 100%);">
+            <h2 style="margin-top: 0;">Code Quality Metrics</h2>
+            <div class="metric">
+                <div class="metric-value">{int(quality_summary['files_with_metrics'])}</div>
+                <div class="metric-label">Files Compared</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">{quality_summary['avg_mi_delta']:+.2f}</div>
+                <div class="metric-label">Avg MI Delta</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">{quality_summary['avg_cc_delta']:+.2f}</div>
+                <div class="metric-label">Avg CC Delta</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">{quality_summary['avg_halstead_bugs_delta']:+.4f}</div>
+                <div class="metric-label">Avg Halstead Bugs Delta</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">{quality_summary['avg_signal_to_noise']:+.2f}</div>
+                <div class="metric-label">Avg Signal-to-Noise Score</div>
+            </div>
+            <p class="subtle">Interpretation: CC and Halstead deltas should trend negative; MI and signal-to-noise should trend positive.</p>
+        </div>
+
         <table>
             <tr>
                 <th>File</th>
@@ -306,11 +383,33 @@ def generate_report(results: dict, config: dict, logger: logging.Logger) -> None
 
         if result.get("status") == "success":
             comp = (result.get("compliance") or {}).get("summary", {})
+            quality = result.get("quality_metrics") or {}
+            before = quality.get("before") or {}
+            after = quality.get("after") or {}
+            comparison = quality.get("comparison") or {}
             html_content += f"""
             <p><strong>Backup Location:</strong> {result.get('backup', 'N/A')}</p>
             <p><strong>Compliance:</strong> critical={comp.get('critical', 0)}, high={comp.get('high', 0)}, medium={comp.get('medium', 0)}, low={comp.get('low', 0)}</p>
             
             """
+            if comparison.get("status") == "ok":
+                delta = comparison.get("delta") or {}
+                line_changes = comparison.get("line_changes") or {}
+                signal = comparison.get("signal_to_noise") or {}
+                html_content += f"""
+                <div class="section-title">Quality Metrics (Before → After)</div>
+                <p><strong>Cyclomatic Avg:</strong> {before.get('cyclomatic', {}).get('average', 'N/A')} → {after.get('cyclomatic', {}).get('average', 'N/A')} | Delta: {_format_delta(float(delta.get('cyclomatic_avg', 0.0)), prefer_positive=False)}</p>
+                <p><strong>Maintainability Index:</strong> {before.get('maintainability_index', 'N/A')} → {after.get('maintainability_index', 'N/A')} | Delta: {_format_delta(float(delta.get('maintainability_index', 0.0)), prefer_positive=True)}</p>
+                <p><strong>Halstead Bugs:</strong> {before.get('halstead', {}).get('bugs', 'N/A')} → {after.get('halstead', {}).get('bugs', 'N/A')} | Delta: {_format_delta(float(delta.get('halstead_bugs', 0.0)), prefer_positive=False)}</p>
+                <p><strong>Code Size:</strong> LOC {before.get('code_size', {}).get('loc', 'N/A')} → {after.get('code_size', {}).get('loc', 'N/A')} (delta {int(delta.get('loc', 0)):+d})</p>
+                <p><strong>Signal-to-Noise:</strong> score={signal.get('score', 0)} | improved={signal.get('improved_metrics', 0)} degraded={signal.get('degraded_metrics', 0)} | lines changed={line_changes.get('total', 0)}</p>
+                """
+            else:
+                html_content += f"""
+                <div class="detail" style="background: #fffde7; color: #7f6000;">
+                    <strong>Quality Metrics:</strong> unavailable ({comparison.get('error', 'not_computed')})
+                </div>
+                """
         else:
             html_content += f"""
             <div class="detail" style="background: #ffebee; color: #c62828;">

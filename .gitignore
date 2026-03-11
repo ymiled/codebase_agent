@@ -1,7 +1,7 @@
 venv/
 .venv/
 env/
-target_repo/__pycache__/
+target_repo/
 *.pyc
 .ipynb_checkpoints/
 
@@ -15,8 +15,6 @@ credentials.json
 
 .DS_Store
 Thumbs.db
-
-target_repo/*test*.py
 
 reports/
 logs/
